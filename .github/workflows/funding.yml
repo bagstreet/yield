@@ -1,0 +1,41 @@
+name: funding-monitor
+
+# Репо bagstreet/yield (PUBLIC). Путь файла: .github/workflows/funding.yml
+# Funding меняется медленно -> один снимок раз в 15 мин достаточно.
+# cron смещён на :05/:20/:35/:50, чтобы не сталкиваться с пушами других репо/модулей.
+on:
+  schedule:
+    - cron: "5-59/15 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: funding
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install requests
+      - name: run funding monitor
+        env:
+          YIELD_STATE_DIR: ${{ github.workspace }}/state
+        run: |
+          mkdir -p state
+          python funding_monitor.py --once || true
+      - name: commit logs
+        run: |
+          git config user.name  "yield-bot"
+          git config user.email "yield-bot@users.noreply.github.com"
+          git add state/ || true
+          git commit -m "funding $(date -u +%FT%TZ)" || echo "nothing to commit"
+          git pull --rebase --autostash || true
+          git push || true
